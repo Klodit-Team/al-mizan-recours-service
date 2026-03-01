@@ -1,0 +1,100 @@
+# k8s/deployment.yaml – Al-Mizan Recours Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recours-service
+  namespace: al-mizan-core
+  labels:
+    app: recours-service
+    version: '1.0.0'
+    part-of: al-mizan
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: recours-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: recours-service
+    spec:
+      containers:
+        - name: recours-service
+          image: recours-service:1.0.0
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8008
+          env:
+            - name: NODE_ENV
+              value: 'production'
+            - name: PORT
+              value: '8008'
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: recours-db-secret
+                  key: database-url
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: url
+          livenessProbe:
+            httpGet:
+              path: /recours-service/v1/health/live
+              port: 8008
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /recours-service/v1/health/ready
+              port: 8008
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: '256Mi'
+              cpu: '100m'
+            limits:
+              memory: '512Mi'
+              cpu: '500m'
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recours-service
+  namespace: al-mizan-core
+spec:
+  selector:
+    app: recours-service
+  ports:
+    - port: 8008
+      targetPort: 8008
+  type: ClusterIP
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: recours-service-hpa
+  namespace: al-mizan-core
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: recours-service
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

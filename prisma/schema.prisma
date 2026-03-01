@@ -1,0 +1,111 @@
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum StatutRecours {
+  DEPOSE
+  EN_EXAMEN
+  ACCEPTE
+  REJETE
+}
+
+// ─────────────────────────────────────────────
+// Recours
+// Principal: soumissionnaire non retenu contestant
+// une attribution provisoire (Art. 82-84 Loi 23-12)
+// ─────────────────────────────────────────────
+
+model Recours {
+  id                       String         @id @default(uuid()) @db.Char(36)
+
+  // Références externes (Cross-service via IDs uniquement – Database-per-Service)
+  appelOffreId             String         @db.Char(36) @map("appel_offre_id")
+  operateurId              String         @db.Char(36) @map("operateur_id")
+  attributionProvisoireId  String         @db.Char(36) @map("attribution_provisoire_id")
+
+  // Contenu du recours
+  reference                String         @unique @db.VarChar(50) @map("reference")
+  motif                    String         // Texte libre du motif de recours
+
+  // Pièces jointes (URLs MinIO présignées stockées en JSON array)
+  piecesJointesUrls        Json?          @map("pieces_jointes_urls")
+
+  // Dates clés
+  dateDepot                DateTime       @map("date_depot") @db.Timestamptz
+  dateLimiteReponse        DateTime       @map("date_limite_reponse") @db.Timestamptz // +10j légal
+
+  // Statut et décision
+  statut                   StatutRecours  @default(DEPOSE)
+  decision                 String?        // Texte de la décision finale
+  motifDecision            String?        @map("motif_decision")
+  dateDecision             DateTime?      @map("date_decision") @db.Timestamptz
+
+  // Métadonnées
+  createdAt                DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  historique               HistoriqueStatut[]
+  examen                   ExamenRecours?
+
+  @@index([appelOffreId])
+  @@index([operateurId])
+  @@index([statut])
+  @@index([dateDepot])
+  @@map("recours")
+}
+
+// ─────────────────────────────────────────────
+// Examen du recours par la Commission des marchés
+// (Art. 84 Loi 23-12)
+// ─────────────────────────────────────────────
+
+model ExamenRecours {
+  id                String    @id @default(uuid()) @db.Char(36)
+  recoursId         String    @unique @db.Char(36) @map("recours_id")
+
+  // Examinateur (référence externe – User Service)
+  examinateurId     String    @db.Char(36) @map("examinateur_id")
+
+  // Contenu de l'examen
+  notes             String?
+  recommandation    String?
+  dateExamen        DateTime? @map("date_examen") @db.Timestamptz
+
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  recours           Recours   @relation(fields: [recoursId], references: [id], onDelete: Cascade)
+
+  @@map("examen_recours")
+}
+
+// ─────────────────────────────────────────────
+// Historique des transitions de statut
+// ─────────────────────────────────────────────
+
+model HistoriqueStatut {
+  id           String         @id @default(uuid()) @db.Char(36)
+  recoursId    String         @db.Char(36) @map("recours_id")
+
+  ancienStatut StatutRecours? @map("ancien_statut")
+  nouveauStatut StatutRecours @map("nouveau_statut")
+  acteurId     String         @db.Char(36) @map("acteur_id")  // Qui a changé le statut
+  commentaire  String?
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  recours      Recours        @relation(fields: [recoursId], references: [id], onDelete: Cascade)
+
+  @@index([recoursId])
+  @@map("historique_statut")
+}
