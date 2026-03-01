@@ -7,13 +7,6 @@ import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
-/**
- * Tests E2E du Service Recours
- * Nécessite une BDD de test disponible (DATABASE_URL en variable d'env)
- *
- * Lancer avec:
- *   DATABASE_URL="postgresql://..." npx jest --config test/jest-e2e.json
- */
 describe('Recours (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;

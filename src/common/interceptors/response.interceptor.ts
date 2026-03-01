@@ -12,7 +12,6 @@ export interface ApiResponse<T> {
 @Injectable()
 export class ResponseInterceptor<T> implements NestInterceptor<T, ApiResponse<T>> {
   intercept(context: ExecutionContext, next: CallHandler): Observable<ApiResponse<T>> {
-    // Typage correct de la réponse
     const ctx = context.switchToHttp();
     const response: Response = ctx.getResponse<Response>();
 

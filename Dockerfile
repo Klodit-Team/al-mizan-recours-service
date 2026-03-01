@@ -36,4 +36,4 @@ EXPOSE 8008
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8008/recours-service/v1/health/live || exit 1
 
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]
