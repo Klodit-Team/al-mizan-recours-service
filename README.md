@@ -85,17 +85,13 @@ recours-service/
 # 1. Cloner et installer les dépendances
 yarn install
 
-# 2. Configurer l'environnement
-cp .env.example .env
-# Remplir les valeurs dans .env (DATABASE_URL, RABBITMQ_URL...)
-
-# 3. Générer le client Prisma
+# 2. Générer le client Prisma
 yarn prisma generate
 
-# 4. Créer les tables en base
+# 3. Créer les tables en base
 yarn prisma db push
 
-# 5. Insérer les données de test (optionnel)
+# 4. Insérer les données de test (optionnel)
 yarn prisma:seed
 ```
 
@@ -112,7 +108,7 @@ Le service démarre sur `http://localhost:8008`
 ## Docker (l'option préférable pour démare le service)
 
 ```bash
-# Lancer tous les services (NestJS + PostgreSQL + RabbitMQ)
+# Lancer tous les services (NestJS + PostgreSQL + RabbitMQ + Redis)
 docker-compose up -d --build
 
 # Appliquer les migrations

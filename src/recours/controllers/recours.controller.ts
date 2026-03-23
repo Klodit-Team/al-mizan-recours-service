@@ -10,7 +10,9 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   Headers,
+  UseInterceptors,
 } from '@nestjs/common';
+import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 import {
   ApiTags,
   ApiOperation,
@@ -21,54 +23,22 @@ import {
 } from '@nestjs/swagger';
 import { RecoursService } from '../services/recours.service';
 import { CreateRecoursDto } from '../dto/create-recours.dto';
-import {
-  UpdateRecoursDto,
-  FilterRecoursDto,
-  ExaminerRecoursDto,
-  StatuerRecoursDto,
-} from '../dto/index';
+import { UpdateRecoursDto, FilterRecoursDto, ExaminerRecoursDto, StatuerRecoursDto } from '../dto/index';
 import { RecoursEntity, PaginatedRecoursEntity } from '../entities/recours.entity';
 
 @ApiTags('recours')
 @ApiBearerAuth('session-cookie')
-@ApiHeader({
-  name: 'x-user-id',
-  description: "Identifiant utilisateur injecté par l'API Gateway",
-  required: true,
-})
-@ApiHeader({
-  name: 'x-user-roles',
-  description: "Rôles utilisateur (JSON array) injectés par l'API Gateway",
-  required: true,
-})
+@ApiHeader({ name: 'x-user-id', description: "Identifiant utilisateur injecté par l'API Gateway", required: true })
+@ApiHeader({ name: 'x-user-roles', description: "Rôles utilisateur (JSON array) injectés par l'API Gateway", required: true })
 @Controller('recours')
 export class RecoursController {
   constructor(private readonly recoursService: RecoursService) {}
 
-  // ─────────────────────────────────────────────────────────────────────
   // POST /recours – Déposer un recours (Art. 82 Loi 23-12)
-  // ─────────────────────────────────────────────────────────────────────
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({
-    summary: 'Déposer un recours',
-    description: `
-Permet à un **Opérateur Économique** non retenu de déposer un recours contre
-une attribution provisoire dans un délai légal de **10 jours** (Art. 82-83 Loi 23-12).
-
-**Règles métier:**
-- Le recours doit être déposé dans les 10 jours suivant la notification.
-- Un motif détaillé (min. 50 caractères) est obligatoire.
-- Les pièces jointes sont des URLs MinIO pré-signées (max. 10 documents).
-- La référence est générée automatiquement (format: REC-YYYY-NNNN).
-- L'horodatage serveur fait foi légale.
-    `,
-  })
-  @ApiResponse({
-    status: 201,
-    description: 'Recours déposé avec succès',
-    type: RecoursEntity,
-  })
+  @ApiOperation({ summary: 'Déposer un recours' })
+  @ApiResponse({ status: 201, description: 'Recours déposé avec succès', type: RecoursEntity })
   @ApiResponse({ status: 400, description: 'Données invalides' })
   @ApiResponse({ status: 422, description: 'Délai légal de dépôt dépassé' })
   async deposer(
@@ -78,77 +48,47 @@ une attribution provisoire dans un délai légal de **10 jours** (Art. 82-83 Loi
     return this.recoursService.deposer(dto, acteurId);
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // GET /recours – Lister tous les recours (Admins/Commission)
-  // ─────────────────────────────────────────────────────────────────────
+  // GET /recours – Lister tous les recours (cache 2 min)
   @Get()
+  @UseInterceptors(CacheInterceptor)
+  @CacheKey('recours:list')
+  @CacheTTL(120)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Lister les recours',
-    description: `
-Retourne la liste paginée des recours avec filtres optionnels.
-Accessible par les rôles: **ADMIN**, **CONTROLEUR**, **COMMISSION_MARCHES**.
-    `,
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Liste paginée des recours',
-    type: PaginatedRecoursEntity,
-  })
+  @ApiOperation({ summary: 'Lister les recours', description: 'Liste paginée. Cache Redis: 2 minutes.' })
+  @ApiResponse({ status: 200, type: PaginatedRecoursEntity })
   async findAll(@Query() filters: FilterRecoursDto): Promise<PaginatedRecoursEntity> {
     return this.recoursService.findAll(filters);
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // GET /recours/statistiques – Statistiques par statut
-  // ─────────────────────────────────────────────────────────────────────
+  // GET /recours/statistiques – Cache 5 min
   @Get('statistiques')
+  @UseInterceptors(CacheInterceptor)
+  @CacheKey('recours:statistiques')
+  @CacheTTL(300)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Statistiques des recours par statut',
-    description: 'Retourne le nombre de recours par statut (tableau de bord admin).',
-  })
+  @ApiOperation({ summary: 'Statistiques des recours par statut', description: 'Cache Redis: 5 minutes.' })
   @ApiResponse({ status: 200, description: 'Compteurs par statut' })
   async getStatistiques() {
     return this.recoursService.getStatistiques();
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // GET /recours/delais-expires – Recours en dépassement de délai
-  // ─────────────────────────────────────────────────────────────────────
+  // GET /recours/delais-expires
   @Get('delais-expires')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Détecter les recours avec délai de réponse expiré',
-    description: `
-Identifie les recours dont le délai légal de réponse (10 jours, Art. 83) est dépassé.
-Utilisé par le scheduler et les contrôleurs pour forcer le traitement.
-    `,
-  })
+  @ApiOperation({ summary: 'Recours avec délai de réponse expiré' })
   @ApiResponse({ status: 200, description: 'Identifiants des recours en retard' })
   async verifierDelais() {
     return this.recoursService.verifierDelaisExpires();
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // GET /recours/operateur/:operateurId – Recours d'un opérateur
-  // ─────────────────────────────────────────────────────────────────────
+  // GET /recours/operateur/:operateurId – Cache 1 min
   @Get('operateur/:operateurId')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Recours d'un opérateur économique",
-    description: `
-Permet à un **Opérateur Économique** de consulter l'état de ses recours
-(DEPOSE, EN_EXAMEN, ACCEPTE, REJETE) – US #4 backlog.
-    `,
-  })
-  @ApiParam({
-    name: 'operateurId',
-    description: "UUID de l'opérateur économique",
-    example: '550e8400-e29b-41d4-a716-446655440002',
-  })
+  @ApiOperation({ summary: "Recours d'un opérateur économique", description: 'Cache Redis: 1 minute.' })
+  @ApiParam({ name: 'operateurId', description: "UUID de l'opérateur économique" })
   @ApiResponse({ status: 200, type: PaginatedRecoursEntity })
-  @ApiResponse({ status: 400, description: 'UUID invalide' })
   async findByOperateur(
     @Param('operateurId', ParseUUIDPipe) operateurId: string,
     @Query() filters: FilterRecoursDto,
@@ -156,15 +96,12 @@ Permet à un **Opérateur Économique** de consulter l'état de ses recours
     return this.recoursService.findByOperateur(operateurId, filters);
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // GET /recours/appel-offre/:appelOffreId – Recours d'un AO
-  // ─────────────────────────────────────────────────────────────────────
+  // GET /recours/appel-offre/:appelOffreId – Cache 2 min
   @Get('appel-offre/:appelOffreId')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(120)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Tous les recours pour un appel d'offres",
-    description: "Retourne l'ensemble des recours déposés sur un AO donné.",
-  })
+  @ApiOperation({ summary: "Recours pour un appel d'offres", description: 'Cache Redis: 2 minutes.' })
   @ApiParam({ name: 'appelOffreId', description: "UUID de l'appel d'offres" })
   @ApiResponse({ status: 200, type: [RecoursEntity] })
   async findByAppelOffre(
@@ -173,41 +110,25 @@ Permet à un **Opérateur Économique** de consulter l'état de ses recours
     return this.recoursService.findByAppelOffre(appelOffreId);
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // GET /recours/:id – Détail d'un recours
-  // ─────────────────────────────────────────────────────────────────────
+  // GET /recours/:id – Cache 1 min
   @Get(':id')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Détail d'un recours avec examen et historique",
-    description:
-      "Retourne le recours complet incluant l'examen en cours et l'historique des transitions de statut.",
-  })
-  @ApiParam({
-    name: 'id',
-    description: 'UUID du recours',
-    example: '550e8400-e29b-41d4-a716-446655440010',
-  })
+  @ApiOperation({ summary: "Détail d'un recours", description: 'Cache Redis: 1 minute.' })
+  @ApiParam({ name: 'id', description: 'UUID du recours' })
   @ApiResponse({ status: 200, type: RecoursEntity })
   @ApiResponse({ status: 404, description: 'Recours introuvable' })
   async findById(@Param('id', ParseUUIDPipe) id: string): Promise<RecoursEntity> {
     return this.recoursService.findByIdWithRelations(id);
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // PATCH /recours/:id – Modifier un recours (statut DEPOSE uniquement)
-  // ─────────────────────────────────────────────────────────────────────
+  // PATCH /recours/:id
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Modifier un recours (avant examen)',
-    description:
-      "Modifie le motif ou les pièces jointes d'un recours. Uniquement possible si le statut est **DEPOSE**.",
-  })
+  @ApiOperation({ summary: 'Modifier un recours (avant examen)' })
   @ApiParam({ name: 'id', description: 'UUID du recours' })
   @ApiResponse({ status: 200, type: RecoursEntity })
-  @ApiResponse({ status: 403, description: 'Modification impossible hors état DEPOSE' })
-  @ApiResponse({ status: 404, description: 'Recours introuvable' })
   async modifier(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRecoursDto,
@@ -216,22 +137,12 @@ Permet à un **Opérateur Économique** de consulter l'état de ses recours
     return this.recoursService.modifier(id, dto, acteurId);
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // PATCH /recours/:id/examiner – Ouvrir l'examen (Art. 84)
-  // ─────────────────────────────────────────────────────────────────────
+  // PATCH /recours/:id/examiner
   @Patch(':id/examiner')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Ouvrir l'examen d'un recours (DEPOSE → EN_EXAMEN)",
-    description: `
-Déclenche l'examen d'un recours par la **Commission des marchés** (Art. 84 Loi 23-12).
-Transition: DEPOSE → EN_EXAMEN.
-    `,
-  })
+  @ApiOperation({ summary: "Ouvrir l'examen (DEPOSE → EN_EXAMEN)" })
   @ApiParam({ name: 'id', description: 'UUID du recours' })
-  @ApiResponse({ status: 200, description: 'Examen ouvert', type: RecoursEntity })
-  @ApiResponse({ status: 400, description: 'Transition de statut invalide' })
-  @ApiResponse({ status: 409, description: 'Un examen est déjà en cours' })
+  @ApiResponse({ status: 200, type: RecoursEntity })
   async examiner(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ExaminerRecoursDto,
@@ -240,25 +151,12 @@ Transition: DEPOSE → EN_EXAMEN.
     return this.recoursService.examiner(id, dto, acteurId);
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // PATCH /recours/:id/statuer – Décision finale (ACCEPTE/REJETE)
-  // ─────────────────────────────────────────────────────────────────────
+  // PATCH /recours/:id/statuer
   @Patch(':id/statuer')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Statuer sur un recours (EN_EXAMEN → ACCEPTE | REJETE)',
-    description: `
-Prononce la décision finale de la Commission des marchés sur le recours.
-Transitions autorisées depuis EN_EXAMEN: **ACCEPTE** ou **REJETE**.
-
-**Impact:** Si ACCEPTE, le service Attribution sera notifié via RabbitMQ
-pour réviser l'attribution provisoire.
-    `,
-  })
+  @ApiOperation({ summary: 'Statuer sur un recours (EN_EXAMEN → ACCEPTE | REJETE)' })
   @ApiParam({ name: 'id', description: 'UUID du recours' })
-  @ApiResponse({ status: 200, description: 'Décision enregistrée', type: RecoursEntity })
-  @ApiResponse({ status: 400, description: 'Transition de statut invalide' })
-  @ApiResponse({ status: 409, description: 'Recours déjà décidé' })
+  @ApiResponse({ status: 200, type: RecoursEntity })
   async statuer(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: StatuerRecoursDto,
