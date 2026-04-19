@@ -101,7 +101,7 @@ yarn prisma:seed
 yarn start:dev
 ```
 
-Le service démarre sur `http://localhost:8008`
+Le service démarre sur `http://localhost:8009`
 
 ---
 
@@ -126,7 +126,7 @@ docker-compose down
 
 ## API REST
 
-**Base URL :** `http://localhost:8008/recours-service/v1`
+**Base URL :** `http://localhost:8009/recours-service/v1`
 
 | Méthode | Endpoint                  | Description                                     |
 | ------- | ------------------------- | ----------------------------------------------- |
@@ -143,7 +143,7 @@ docker-compose down
 ### Documentation Swagger
 
 ```
-http://localhost:8008/recours-service/v1/docs
+http://localhost:8009/recours-service/v1/docs
 ```
 
 ### Cycle de vie d'un recours

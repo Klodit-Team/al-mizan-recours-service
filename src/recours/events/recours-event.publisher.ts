@@ -27,7 +27,7 @@ export class RecoursEventPublisher implements OnModuleInit {
 
   private async connect(): Promise<void> {
     try {
-      const url = this.config.get<string>('rabbitmq.url', 'amqp://guest:guest@localhost:5673');
+      const url = this.config.get<string>('rabbitmq.url', 'amqp://guest:guest@localhost:5672');
       this.channelModel = await amqp.connect(url);
       this.channel = await this.channelModel.createChannel();
 
