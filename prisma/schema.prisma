@@ -1,11 +1,11 @@
-// Database: PostgreSQL
+// Database: MySQL
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
 }
 
 // ─────────────────────────────────────────────
@@ -41,18 +41,18 @@ model Recours {
   piecesJointesUrls        Json?          @map("pieces_jointes_urls")
 
   // Dates clés
-  dateDepot                DateTime       @map("date_depot") @db.Timestamptz
-  dateLimiteReponse        DateTime       @map("date_limite_reponse") @db.Timestamptz // +10j légal
+  dateDepot                DateTime       @map("date_depot") @db.DateTime(3)
+  dateLimiteReponse        DateTime       @map("date_limite_reponse") @db.DateTime(3) // +10j légal
 
   // Statut et décision
   statut                   StatutRecours  @default(DEPOSE)
   decision                 String?        // Texte de la décision finale
   motifDecision            String?        @map("motif_decision")
-  dateDecision             DateTime?      @map("date_decision") @db.Timestamptz
+  dateDecision             DateTime?      @map("date_decision") @db.DateTime(3)
 
   // Métadonnées
-  createdAt                DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt                DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt                DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt                DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
 
   // Relations
   historique               HistoriqueStatut[]
@@ -80,10 +80,10 @@ model ExamenRecours {
   // Contenu de l'examen
   notes             String?
   recommandation    String?
-  dateExamen        DateTime? @map("date_examen") @db.Timestamptz
+  dateExamen        DateTime? @map("date_examen") @db.DateTime(3)
 
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
 
   recours           Recours   @relation(fields: [recoursId], references: [id], onDelete: Cascade)
 
@@ -102,7 +102,7 @@ model HistoriqueStatut {
   nouveauStatut StatutRecours @map("nouveau_statut")
   acteurId     String         @db.Char(36) @map("acteur_id")  // Qui a changé le statut
   commentaire  String?
-  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  createdAt    DateTime       @default(now()) @map("created_at") @db.DateTime(3)
 
   recours      Recours        @relation(fields: [recoursId], references: [id], onDelete: Cascade)
 

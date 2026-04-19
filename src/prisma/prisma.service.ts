@@ -1,18 +1,18 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
-  private pool: Pool;
 
   constructor() {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-    });
-    const adapter = new PrismaPg(pool);
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error('DATABASE_URL must be defined');
+    }
+
+    const adapter = new PrismaMariaDb(connectionString);
 
     super({
       adapter,
@@ -22,29 +22,32 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         { emit: 'stdout', level: 'error' },
       ],
     });
-
-    // Stocker la pool pour la fermer proprement
-    this.pool = pool;
   }
 
   async onModuleInit(): Promise<void> {
     await this.$connect();
-    this.logger.log('Prisma connected to PostgreSQL (recours_db)');
+    this.logger.log('Prisma connected to MySQL (recours_db)');
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.$disconnect();
-    await this.pool.end();
-    this.logger.log('Prisma disconnected from PostgreSQL');
+    this.logger.log('Prisma disconnected from MySQL');
   }
 
   async cleanDatabase(): Promise<void> {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('cleanDatabase is forbidden in production!');
     }
+
     const tableNames = ['historique_statut', 'examen_recours', 'recours'];
-    for (const table of tableNames) {
-      await this.$executeRawUnsafe(`TRUNCATE TABLE "${table}" CASCADE;`);
+
+    await this.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 0');
+    try {
+      for (const table of tableNames) {
+        await this.$executeRawUnsafe(`TRUNCATE TABLE \`${table}\``);
+      }
+    } finally {
+      await this.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 1');
     }
   }
 }

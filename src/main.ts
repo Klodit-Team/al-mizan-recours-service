@@ -13,7 +13,7 @@ async function bootstrap() {
   });
 
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 8008);
+  const port = configService.get<number>('PORT', 8009);
   const apiPrefix = configService.get<string>('API_PREFIX', 'recours-service/v1');
 
   // ── Global prefix
