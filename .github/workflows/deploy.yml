@@ -21,6 +21,6 @@ jobs:
             echo "🚀 Starting Deployment for recours-service..."
             cd ~/recours-service
             git pull
-            cd ~/al-mizan-deployment
-            sudo docker-compose up -d --build recours-service
+            cd ~/al-mizan-deployments
+            docker compose up -d --build recours-service
             echo "✅ Deployment Successful!"
