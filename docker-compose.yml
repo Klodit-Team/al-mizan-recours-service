@@ -15,7 +15,7 @@ services:
       PORT: 8008
       RECOURS_DELAI_REPONSE_JOURS: 10
       DATABASE_URL: postgresql://${POSTGRES_USER:-recours_user}:${POSTGRES_PASSWORD:-recours_password}@postgres:5432/${POSTGRES_DB:-recours_db}
-      REDIS_HOST: redis
+      REDIS_HOST: al-mizan-redis
       REDIS_PORT: 6379
       REDIS_CACHE_TTL: 300
     volumes:
@@ -24,13 +24,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     command: npm run start:dev
     networks:
-      - al_mizan_network
+      - al-mizan-network
     restart: unless-stopped
 
   # ── PostgreSQL ───────────────────────────────────────
@@ -52,67 +48,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - al_mizan_network
-
-  # ── RabbitMQ ─────────────────────────────────────────
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    container_name: al_mizan_rabbitmq_recours_dev
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
-    healthcheck:
-      test: rabbitmq-diagnostics -q ping
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - al_mizan_network
-
-  # ── Redis ─────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: al_mizan_redis_recours
-    ports:
-      - "6379:6379"
-    command: >
-      redis-server
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
-      --save ""
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - al_mizan_network
-    restart: unless-stopped
-
-  # ── pgAdmin ──────────────────────────────────────────
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: al_mizan_pgadmin_recours
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@almizan.dz}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
-    networks:
-      - al_mizan_network
-    profiles:
-      - tools
+      - al-mizan-network
 
 volumes:
   recours_pg_data:
 
 networks:
-  al_mizan_network:
-    driver: bridge
-    name: al_mizan_network
-    external: false
+  al-mizan-network:
+    name: al-mizan-network
+    external: true

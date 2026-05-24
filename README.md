@@ -1,254 +1,298 @@
-# Al-Mizan – Service Recours
+# al-mizan-recours-service
 
-<p align="center">
-  <img src="https://nestjs.com/img/logo-small.svg" width="80" alt="NestJS" />
-</p>
-
-<p align="center">
-  Microservice de gestion des recours des soumissionnaires<br/>
-  <strong>Loi 23-12 – Articles 82 à 84 – Marchés publics algériens</strong>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/NestJS-10-red?logo=nestjs" />
-  <img src="https://img.shields.io/badge/Prisma-7-blue?logo=prisma" />
-  <img src="https://img.shields.io/badge/PostgreSQL-16-blue?logo=postgresql" />
-  <img src="https://img.shields.io/badge/RabbitMQ-3.13-orange?logo=rabbitmq" />
-  <img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" />
-</p>
+> **Service de Gestion des Recours** — Traitement des recours légaux des opérateurs économiques contre les attributions provisoires, conformément aux Art. 82-84 de la loi algérienne 23-12.
 
 ---
 
-## Description
+## Table des matières
 
-Microservice responsable de la gestion complète du cycle de vie des **recours** dans le système Al-Mizan. Un recours est une contestation déposée par un soumissionnaire non retenu suite à une attribution provisoire de marché public.
-
-**Cadre légal :** Loi 23-12 relative aux marchés publics, Articles 82-84 :
-
-- Délai de dépôt : 10 jours après notification de l'attribution provisoire
-- Délai de réponse de la Commission : 10 jours ouvrables
-- Décision : acceptation ou rejet motivé
-
----
-
-## Architecture
-
-```
-recours-service/
-├── src/
-│   ├── main.ts                          # Bootstrap + Swagger
-│   ├── app.module.ts
-│   ├── config/                          # Configuration app & RabbitMQ
-│   ├── prisma/                          # PrismaService (connexion BDD)
-│   ├── health/                          # Endpoints de santé
-│   ├── common/
-│   │   ├── constants/                   # Constantes métier
-│   │   ├── decorators/                  # @CurrentUser
-│   │   ├── exceptions/                  # Exceptions métier personnalisées
-│   │   ├── filters/                     # Filtre global d'exceptions HTTP
-│   │   ├── interceptors/                # Logging + format de réponse uniforme
-│   │   └── pipes/                       # Validation pagination
-│   └── recours/
-│       ├── controllers/                 # RecoursController (REST)
-│       ├── dto/                         # CreateRecoursDto, FilterRecoursDto...
-│       ├── entities/                    # RecoursEntity, PaginatedRecoursEntity
-│       ├── events/                      # RecoursEventPublisher (RabbitMQ)
-│       ├── interfaces/                  # IRecoursRepository
-│       ├── repositories/                # RecoursRepository (Prisma)
-│       ├── services/                    # RecoursService + services SOLID
-│       └── recours.module.ts
-├── prisma/
-│   ├── schema.prisma                    # Modèles : Recours, ExamenRecours, HistoriqueStatut
-│   ├── migrations/                      # Migrations SQL
-│   └── seed.ts                          # Données de test
-├── test/                                # Tests E2E
-├── k8s/                                 # Manifestes Kubernetes
-├── Dockerfile
-└── docker-compose.yml
-```
+1. [Aperçu](#aperçu)
+2. [Technologies](#technologies)
+3. [Architecture & Réseau](#architecture--réseau)
+4. [Base de données](#base-de-données)
+5. [Variables d'environnement](#variables-denvironnement)
+6. [API REST](#api-rest)
+7. [Messagerie RabbitMQ](#messagerie-rabbitmq)
+8. [Commandes utiles](#commandes-utiles)
+9. [Docker](#docker)
 
 ---
 
-## Démarrage rapide
+## Aperçu
 
-### Prérequis
+`al-mizan-recours-service` gère la procédure légale de recours d'un opérateur économique (OE) non retenu qui conteste une attribution provisoire dans le cadre d'un appel d'offres.
 
-- Node.js 20+
-- Yarn 4 (`corepack enable`)
-- Docker Desktop
-- PostgreSQL (local ou [Neon](https://neon.tech))
-- RabbitMQ (via Docker ou local)
+Conformément aux **Art. 82-84 de la Loi 23-12** :
+- Un OE dispose de **10 jours** après la publication de l'attribution provisoire pour déposer un recours.
+- Chaque recours est examiné par un examinateur désigné.
+- À l'expiration des 10 jours (avec ou sans recours), l'attribution provisoire devient **définitive**.
 
-### Installation
+Le service :
+- Gère les recours (dépôt, examen, décision).
+- Lance un **timer légal de 10 jours** à la réception de l'événement `ao.attribution.provisoire`.
+- Émet `recours.periode.expired` au terme du délai → `appel-offres-service` clôture l'AO.
 
-```bash
-# 1. Cloner et installer les dépendances
-yarn install
-
-# 2. Générer le client Prisma
-yarn prisma generate
-
-# 3. Créer les tables en base
-yarn prisma db push
-
-# 4. Insérer les données de test (optionnel)
-yarn prisma:seed
-```
-
-### Lancer en développement
-
-```bash
-yarn start:dev
-```
-
-Le service démarre sur `http://localhost:8009`
+Le service fonctionne en **NestJS** avec **Prisma ORM** sur **MySQL** et un cache **Redis**.
 
 ---
 
-## Docker (l'option préférable pour démare le service)
+## Technologies
 
-```bash
-# Lancer tous les services (NestJS + PostgreSQL + RabbitMQ + Redis)
-docker-compose up -d --build
+| Technologie         | Version  | Rôle                                             |
+|---------------------|----------|--------------------------------------------------|
+| Node.js             | 20 LTS   | Runtime                                          |
+| TypeScript          | ^5.3     | Langage                                          |
+| NestJS              | ^10.3    | Framework (modules, DI, microservices)           |
+| Prisma ORM          | 7.4.2    | ORM + migrations MySQL (via `prisma migrate`)    |
+| MySQL               | 8.x      | Base de données principale (`recours_db`)        |
+| Redis (ioredis)     | ^5.3     | Cache (TTL configurable, sessions)               |
+| amqplib             | ^0.10    | Client RabbitMQ                                  |
+| amqp-connection-manager | ^4.1 | Reconnexion automatique RabbitMQ               |
+| class-validator     | ~0.14    | Validation des DTOs                              |
+| @nestjs/swagger     | ^7.3     | Documentation OpenAPI                            |
+| Jest                | ^29.7    | Tests unitaires & e2e                            |
+| Yarn (Berry)        | 4.9.2    | Gestionnaire de paquets                          |
 
-# Appliquer les migrations
-docker-compose exec recours-service yarn prisma migrate deploy
+---
 
-# Insérer les données de test
-docker-compose exec recours-service yarn prisma:seed
-
-# Voir les logs
-docker-compose logs -f recours-service
-
-# Arrêter
-docker-compose down
-```
-
-## API REST
-
-**Base URL :** `http://localhost:8009/recours-service/v1`
-
-| Méthode | Endpoint                  | Description                                     |
-| ------- | ------------------------- | ----------------------------------------------- |
-| `POST`  | `/recours`                | Déposer un recours                              |
-| `GET`   | `/recours`                | Lister les recours (avec filtres et pagination) |
-| `GET`   | `/recours/:id`            | Détail d'un recours avec historique             |
-| `PATCH` | `/recours/:id`            | Modifier un recours (statut DEPOSE uniquement)  |
-| `PATCH` | `/recours/:id/examiner`   | Ouvrir l'examen du recours                      |
-| `PATCH` | `/recours/:id/statuer`    | Rendre la décision finale (ACCEPTE / REJETE)    |
-| `GET`   | `/recours/delais-expires` | Recours dont le délai légal est dépassé         |
-| `GET`   | `/recours/statistiques`   | Compteurs par statut                            |
-| `GET`   | `/health`                 | Santé du service                                |
-
-### Documentation Swagger
+## Architecture & Réseau
 
 ```
-http://localhost:8009/recours-service/v1/docs
+API Gateway (:3000) ──► recours-service (:8009)
+                                │
+                                ├── MySQL    (mysql:3306 → recours_db)
+                                ├── Redis    (redis:6379)
+                                └── RabbitMQ (rabbitmq:5672)
 ```
 
-### Cycle de vie d'un recours
+> ⚠️ **Note** : Le Dockerfile expose le port `8008`, mais le service écoute sur `8009` (configuré via `PORT`). La variable `PORT=8009` dans le `.env` prend le dessus.
 
-```
-DEPOSE ──► EN_EXAMEN ──► ACCEPTE
-                    └──► REJETE
-```
+- **Port exposé** : `8009`
+- **Réseau Docker** : `al-mizan-network`
+- **Nom du conteneur** : `recours-service`
+- **Swagger UI** : `http://localhost:8009/api`
 
 ---
 
 ## Base de données
 
+**Moteur** : MySQL 8 · **Schema** : `recours_db`
+
+> ⚠️ Ce service utilise `prisma migrate deploy` (migrations versionnées), pas `prisma db push`.
+
 ### Modèles Prisma
 
-| Table               | Description                          |
-| ------------------- | ------------------------------------ |
-| `recours`           | Recours principal                    |
-| `examen_recours`    | Examen par la Commission des marchés |
-| `historique_statut` | Traçabilité complète des transitions |
+#### `Recours`
+| Champ                  | Type           | Description                                     |
+|------------------------|----------------|-------------------------------------------------|
+| `id`                   | String (UUID)  | PK                                              |
+| `appelOffreId`         | String         | Réf. externe vers appel-offres-service          |
+| `operateurId`          | String         | Réf. externe vers users-service                 |
+| `attributionProvisoireId` | String      | Réf. externe vers attribution (appel-offres)    |
+| `reference`            | String         | Référence unique du recours                     |
+| `motif`                | String         | Motif textuel du recours                        |
+| `piecesJointesUrls`    | Json?          | URLs MinIO présignées des pièces jointes        |
+| `dateDepot`            | DateTime       | Date de dépôt                                   |
+| `dateLimiteReponse`    | DateTime       | Date limite légale (+10j Art. 83)               |
+| `statut`               | StatutRecours  | DEPOSE → EN_EXAMEN → ACCEPTE/REJETE             |
+| `decision`             | String?        | Texte de la décision finale                     |
+| `motifDecision`        | String?        | Motif de la décision                            |
+| `dateDecision`         | DateTime?      | Date de la décision                             |
 
-### Commandes utiles
+#### `ExamenRecours`
+| Champ          | Type     | Description                                   |
+|----------------|----------|-----------------------------------------------|
+| `id`           | String   | PK                                            |
+| `recoursId`    | String   | FK → Recours (unique, 1:1)                    |
+| `examinateurId`| String   | Réf. externe vers users-service               |
+| `notes`        | String?  | Notes d'examen                                |
+| `recommandation`| String? | Recommandation de l'examinateur               |
+| `dateExamen`   | DateTime?| Date d'examen                                 |
 
-```bash
-# Générer le client après modification du schema
-yarn prisma generate
+#### `HistoriqueStatut`
+| Champ         | Type          | Description                       |
+|---------------|---------------|-----------------------------------|
+| `recoursId`   | String        | FK → Recours                      |
+| `ancienStatut`| StatutRecours?|                                   |
+| `nouveauStatut`| StatutRecours|                                   |
+| `acteurId`    | String        | Qui a effectué la transition      |
+| `commentaire` | String?       |                                   |
 
-# Créer une migration
-yarn prisma migrate dev --name nom_migration
+### Cycle de vie d'un recours
 
-# Appliquer les migrations (production)
-yarn prisma migrate deploy
-
-# Interface visuelle
-yarn prisma studio
+```
+DEPOSE → EN_EXAMEN → ACCEPTE
+                   → REJETE
 ```
 
 ---
 
-## Événements RabbitMQ
+## Variables d'environnement
 
-Le service publie les événements suivants sur l'exchange `al_mizan_events` :
+```env
+PORT=8009
+NODE_ENV=development
 
-| Événement           | Déclencheur                     |
-| ------------------- | ------------------------------- |
-| `recours.depose`    | Nouveau recours déposé          |
-| `recours.en_examen` | Examen ouvert par la Commission |
-| `recours.accepte`   | Recours accepté                 |
-| `recours.rejete`    | Recours rejeté                  |
+# Délai légal de réponse (Art. 83)
+RECOURS_DELAI_REPONSE_JOURS=10
 
----
+# MySQL
+DATABASE_URL=mysql://root:password@localhost:3306/recours_db
 
-## Tests
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_CACHE_TTL=300
 
-```bash
-# Tests unitaires
-yarn test
-
-# Tests unitaires en mode watch
-yarn test:watch
-
-# Couverture de code
-yarn test:cov
-
-# Tests E2E
-yarn test:e2e
+# RabbitMQ
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+RABBITMQ_EXCHANGE=al-mizan.events
 ```
 
-## Kubernetes
+> ⚠️ En production (Docker), remplacer `localhost` par les noms de conteneurs : `mysql`, `redis`, `rabbitmq`.
 
-```bash
-# Créer le namespace
-kubectl create namespace al-mizan-core
+---
 
-# Déployer
-kubectl apply -f k8s/deployment.yaml -n al-mizan-core
+## API REST
 
-# Vérifier
-kubectl get pods -n al-mizan-core
+Base URL (via Gateway) : `http://localhost:3000/recours`  
+Base URL (directe) : `http://localhost:8009`  
+Swagger : `http://localhost:8009/api`
+
+### Recours
+
+| Méthode  | Endpoint                   | Auth | Description                                        |
+|----------|----------------------------|------|----------------------------------------------------|
+| `POST`   | `/recours`                 | Oui  | Déposer un recours (OE non retenu)                 |
+| `GET`    | `/recours/:id`             | Oui  | Détail d'un recours                                |
+| `GET`    | `/recours?aoId={id}`       | Oui  | Lister les recours pour un AO                      |
+| `GET`    | `/recours?operateurId={id}`| Oui  | Lister les recours d'un opérateur                  |
+
+### Examen & Décision
+
+| Méthode  | Endpoint                     | Auth | Description                                      |
+|----------|------------------------------|------|--------------------------------------------------|
+| `POST`   | `/recours/:id/examen`        | Oui  | Initier l'examen du recours (passage EN_EXAMEN)  |
+| `PATCH`  | `/recours/:id/decision`      | Oui  | Rendre une décision (ACCEPTE / REJETE)           |
+
+### Historique
+
+| Méthode  | Endpoint                     | Auth | Description                     |
+|----------|------------------------------|------|---------------------------------|
+| `GET`    | `/recours/:id/historique`    | Oui  | Historique des transitions      |
+
+---
+
+## Messagerie RabbitMQ
+
+**Exchange** : `al-mizan.events` (type: `topic`, durable: `true`)
+
+### Événements publiés
+
+| Routing Key                 | Déclencheur                           | Payload clés                                    |
+|-----------------------------|---------------------------------------|--------------------------------------------------|
+| `recours.depose`            | Recours déposé                        | `recoursId`, `appelOffreId`, `operateurId`, `reference` |
+| `recours.en_examen`         | Recours passé EN_EXAMEN               | `recoursId`, `statut`, `timestamp`               |
+| `recours.accepte`           | Recours accepté                       | `recoursId`, `appelOffreId`, `decision`          |
+| `recours.rejete`            | Recours rejeté                        | `recoursId`, `appelOffreId`, `decision`          |
+| `recours.periode.expired`   | Timer 10j expiré (sans recours ou après décision) | `aoId` → `appel-offres-service` clôture l'AO |
+
+### Événements consommés
+
+| Routing Key                    | Source               | Action réalisée                                            |
+|--------------------------------|----------------------|------------------------------------------------------------|
+| `ao.attribution.provisoire`    | appel-offres-service | Démarrage du timer légal de 10 jours pour l'AO            |
+
+#### Flux légal complet :
+
+```
+appel-offres-service
+  └─[ao.attribution.provisoire]──► recours-service
+                                        │
+                                        ├─ Timer 10j démarré
+                                        │
+                                        ├─ Si recours déposé : processus DEPOSE → EN_EXAMEN → ACCEPTE/REJETE
+                                        │                        [recours.*] ──► notification-service
+                                        │
+                                        └─ À expiration (10j) :
+                                           [recours.periode.expired {aoId}] ──► appel-offres-service
+                                                                                    │
+                                                                              AO : ATTRIBUE → CLOTURE
+                                                                              [ao.attribution.definitive] ──► notification-service
 ```
 
 ---
 
-## Stack technique
+## Commandes utiles
 
-| Technologie | Version | Rôle              |
-| ----------- | ------- | ----------------- |
-| NestJS      | 10      | Framework HTTP    |
-| Prisma      | 7       | ORM               |
-| PostgreSQL  | 16      | Base de données   |
-| RabbitMQ    | 3.13    | Message broker    |
-| TypeScript  | 5       | Langage           |
-| Swagger     | 7       | Documentation API |
-| Jest        | 29      | Tests             |
-| Docker      | -       | Conteneurisation  |
+### Développement local
+
+```bash
+# Installer les dépendances (Yarn Berry)
+yarn install
+
+# Démarrer en mode dev (hot-reload NestJS)
+yarn start:dev
+
+# Compiler TypeScript
+yarn build
+
+# Démarrer en production
+yarn start:prod
+```
+
+### Base de données
+
+```bash
+# Générer le client Prisma
+yarn prisma:generate
+
+# Créer et appliquer une migration versionnée
+yarn prisma:migrate:dev
+
+# Déployer les migrations en production
+yarn prisma:migrate:deploy
+
+# Seeder les données initiales
+yarn prisma:seed
+
+# Ouvrir Prisma Studio
+yarn prisma:studio
+```
+
+### Tests
+
+```bash
+yarn test               # Tests unitaires
+yarn test:e2e           # Tests end-to-end
+yarn test:cov           # Couverture de code
+```
 
 ---
 
-## Équipe
+## Docker
 
-**KLODIT Team** – Projet Al-Mizan
-Système de gestion des marchés publics – République Algérienne Démocratique et Populaire
+### Build de l'image
+
+```bash
+docker build -t al-mizan-recours-service .
+```
+
+### Notes importantes sur le Dockerfile
+
+- Image de base : `node:20-alpine`
+- **`openssl` installé explicitement** pour Prisma sur Alpine.
+- Utilise `npm install --legacy-peer-deps` pour la compatibilité des dépendances.
+- Au démarrage : `npx prisma migrate deploy && node dist/src/main`
+- Utilise les **migrations versionnées** (pas `prisma db push`), idéal pour la production.
+
+### Déploiement via docker-compose
+
+```bash
+docker-compose up -d recours-service
+docker-compose logs -f recours-service
+```
 
 ---
 
-## Licence
-
-UNLICENSED – Usage interne uniquement.
+*Maintenu par l'équipe Al-Mizan — voir `al-mizan-deployments` pour la configuration de déploiement complète.*
