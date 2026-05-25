@@ -67,7 +67,19 @@ export class RecoursController {
   @CacheTTL(300)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Statistiques des recours par statut', description: 'Cache Redis: 5 minutes.' })
-  @ApiResponse({ status: 200, description: 'Compteurs par statut' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Compteurs par statut',
+    schema: {
+      type: 'object',
+      properties: {
+        DEPOSE: { type: 'integer', example: 5 },
+        EN_EXAMEN: { type: 'integer', example: 2 },
+        ACCEPTE: { type: 'integer', example: 1 },
+        REJETE: { type: 'integer', example: 3 }
+      }
+    }
+  })
   async getStatistiques() {
     return this.recoursService.getStatistiques();
   }
@@ -76,7 +88,21 @@ export class RecoursController {
   @Get('delais-expires')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Recours avec délai de réponse expiré' })
-  @ApiResponse({ status: 200, description: 'Identifiants des recours en retard' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Identifiants des recours en retard',
+    schema: {
+      type: 'object',
+      properties: {
+        count: { type: 'integer', example: 2 },
+        ids: {
+          type: 'array',
+          items: { type: 'string', format: 'uuid' },
+          example: ['550e8400-e29b-41d4-a716-446655440001']
+        }
+      }
+    }
+  })
   async verifierDelais() {
     return this.recoursService.verifierDelaisExpires();
   }
