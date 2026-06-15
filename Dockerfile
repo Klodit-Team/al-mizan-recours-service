@@ -19,5 +19,5 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/prisma ./prisma
 COPY prisma.config.ts ./
-EXPOSE 8008
+EXPOSE 8009
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main"]
